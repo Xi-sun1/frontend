@@ -1,0 +1,29 @@
+{
+  "pages": [
+    {
+      "path": "pages/auth/auth",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "情绪音岛"
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "情绪音岛-首页"
+      }
+    },
+    {
+      "path": "pages/myMusic/myMusic",
+      "style": {
+        "navigationBarTitleText": "我的音乐"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "情绪音岛",
+    "navigationBarBackgroundColor": "#F8F8F8",
+    "backgroundColor": "#F8F8F8"
+  }
+}
