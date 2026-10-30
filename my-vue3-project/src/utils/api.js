@@ -7,7 +7,7 @@
  * API根地址
  * 作用：统一管理API请求的基础URL
  */
-const API_BASE_URL = 'http://139.196.96.99:3000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://139.196.96.99:3000/api';
 
 /**
  * 获取token
@@ -27,71 +27,55 @@ const getToken = () => {
  * @returns {Promise} 请求结果Promise
  * 功能：处理API请求，添加认证信息，统一错误处理
  */
-const request = (url, method = 'GET', data = {}, header = {}) => {
-  // 添加token到请求头
+const request = (url, method = 'GET', data = {}, header = {}) => new Promise((resolve, reject) => {
   const token = getToken();
-  if (token) {
-    header.Authorization = `Bearer ${token}`;
-  }
-  
-  // 合并默认header
-  const defaultHeader = {
-    'Content-Type': 'application/json'
-  };
-  
-  return new Promise((resolve, reject) => {
-    console.log('API请求:', {
-      url: `${API_BASE_URL}${url}`,
-      method,
-      data,
-      header: { ...defaultHeader, ...header }
-    });
-    
-    uni.request({
-      url: `${API_BASE_URL}${url}`,
-      method,
-      data,
-      header: { ...defaultHeader, ...header },
-      success: (res) => {
-        console.log('API响应:', res);
-        const { statusCode, data: responseData } = res;
-        
-        // 修改：即使后端返回500状态码，只要返回了歌曲数据，就视为成功
-        if (statusCode === 200 || statusCode === 201 || (statusCode === 500 && responseData && (responseData.list || responseData.data))) {
-          console.log('API响应成功（状态码:', statusCode, '），返回数据:', responseData);
-          resolve(responseData);
-        } else {
-          // 处理错误，不显示任何错误信息
-          const errorMessage = responseData?.message || '请求失败';
-          console.error('API错误:', errorMessage);
-          console.error('API错误详情:', {
-            statusCode,
-            responseData,
-            url: `${API_BASE_URL}${url}`,
-            method,
-            data
-          });
-          reject(responseData);
-        }
-      },
-      fail: (err) => {
-        console.error('网络错误:', err);
-        console.error('网络错误详情:', {
-          url: `${API_BASE_URL}${url}`,
-          method,
-          data
-        });
-        // 不显示任何网络错误信息
-        reject(err);
-      }
-    });
+  uni.request({
+    url: API_BASE_URL + url, method, data, timeout: 15000,
+    header: { 'Content-Type': 'application/json', ...header, ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+    success: ({ statusCode, data: body }) => {
+      if (statusCode >= 200 && statusCode < 300) { resolve(body); return; }
+      const error = new Error(statusCode >= 500 ? '服务暂时不可用，请稍后重试' : (body?.message || '请求失败'));
+      error.statusCode = statusCode;
+      reject(error);
+    },
+    fail: (error) => reject(new Error(/timeout/i.test(error?.errMsg || '') ? '请求超时，请重试' : '网络连接失败，请检查网络'))
   });
-};
+});
 
 /**
  * 用户认证相关API
  * 功能：处理用户登录、注册和获取用户信息
  */
+// 登录/注册单独处理错误，不记录密码或认证令牌，不影响音乐接口。
+const authRequest = (url, data) => new Promise((resolve, reject) => {
+  uni.request({
+    url: API_BASE_URL + url,
+    method: 'POST',
+    data,
+    timeout: 15000,
+    header: { 'Content-Type': 'application/json' },
+    success: ({ statusCode, data: body }) => {
+      const code = body?.code;
+      if (statusCode >= 200 && statusCode < 300 && body && typeof body === 'object'
+          && (code == null || Number(code) === 0 || (Number(code) >= 200 && Number(code) < 300))) {
+        resolve(body);
+        return;
+      }
+      let message = body?.message || '操作失败，请稍后重试';
+      if (statusCode >= 500) message = '服务暂时不可用，请稍后重试';
+      else if (statusCode === 429) message = '操作过于频繁，请稍后再试';
+      else if (/用户已存在|账号已存在|用户名已存在/.test(message)) message = '该账号已注册，请更换账号或直接登录';
+      else if (/用户名或密码错误|账号或密码错误/.test(message) || statusCode === 401) message = '账号或密码错误，请检查后重试';
+      reject(new Error(message));
+    },
+    fail: (error) => reject(new Error(
+      /timeout/i.test(error?.errMsg || '')
+        ? '请求超时，请稍后重试'
+        : '无法连接服务器，请检查网络后重试'
+    ))
+  });
+});
+
 export const authApi = {
   /**
    * 用户登录
@@ -101,7 +85,7 @@ export const authApi = {
    * 功能：验证用户凭据，获取认证token
    */
   login: (username, password) => {
-    return request('/auth/login', 'POST', { username, password });
+    return authRequest('/auth/login', { username, password });
   },
   
   /**
@@ -113,7 +97,7 @@ export const authApi = {
    * 功能：创建新用户账号
    */
   register: (username, password, email = '') => {
-    return request('/auth/register', 'POST', { username, password, email });
+    return authRequest('/auth/register', { username, password, email });
   },
   
   /**

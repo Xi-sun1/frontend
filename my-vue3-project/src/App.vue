@@ -33,4 +33,16 @@ export default {
 <style>
 /* 全局公共样式 */
 /* 作用：为所有页面提供基础样式支持 */
+
+/* 手机优先：宽屏仅显示居中的手机宽度，真实手机占满可用宽度。 */
+page { box-sizing: border-box; }
+uni-page-body { width: 100%; max-width: 430px; margin: 0 auto; }
+@media (min-width: 431px) {
+  html, body { background: #202330; }
+  uni-page-head .uni-page-head {
+    width: 430px; left: 50%; right: auto; transform: translateX(-50%);
+    box-sizing: border-box;
+  }
+}
+
 </style>

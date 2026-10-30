@@ -1,86 +1,75 @@
 <template>
   <view class="my-music-container">
-    <view class="background-decoration"></view>
-    
+    <view class="bg-glow glow-a"></view>
+    <view class="bg-glow glow-b"></view>
+
     <view class="my-music-content">
       <view class="header">
-        <view class="header-left">
-          <text class="back-btn" @tap="goBack">←</text>
+        <view class="back-btn" role="button" aria-label="返回" @tap="goBack">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M15 5L8 12L15 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </view>
         <view class="header-title">
           <text class="title">我的音乐</text>
+          <text class="subtitle">共 {{ currentSongs.length }} 首</text>
         </view>
         <view class="header-right"></view>
       </view>
 
-      <view class="tabs">
-        <view 
-          class="tab-item" 
+      <view class="toolbar">
+        <view
+          class="tab-item"
           :class="{ active: activeTab === 'playlist' }"
           @tap="switchTab('playlist')"
         >
           <text class="tab-text">我的歌单</text>
         </view>
-        <view 
-          v-if="activeTab === 'playlist'" 
-          class="add-music-btn" 
-          @tap="addLocalMusic"
-        >
-          <text class="add-icon">+</text>
+        <view class="add-music-btn" role="button" aria-label="添加音乐" @tap="addLocalMusic">
+          <text class="add-icon">＋</text>
           <text class="add-text">添加音乐</text>
         </view>
       </view>
 
-      <scroll-view 
-        class="song-list" 
-        scroll-y 
-        @scrolltolower="loadMore"
-      >
-        <view 
-          v-for="(song, index) in currentSongs" 
-          :key="song.id" 
+      <scroll-view class="song-list" scroll-y>
+        <view
+          v-for="(song, index) in currentSongs"
+          :key="song.id"
           class="song-item"
+          :class="{ playing: player.currentSong?.id === song.id }"
           @tap="playSong(song, index)"
         >
-          <view class="song-index">
-            <text class="index-text">{{ index + 1 }}</text>
-          </view>
-          
-          <view class="song-info">
-            <view class="song-cover">
-              <image 
-                :src="song.cover || '/static/logo.jpg'" 
-                class="cover-image"
-                mode="aspectFill"
-              />
-              <view class="play-icon" v-if="player.currentSong?.id === song.id && player.isPlaying">
-                <text class="icon">♪</text>
-              </view>
-            </view>
-            
-            <view class="song-details">
-              <text class="song-title">{{ song.title }}</text>
-              <text class="song-artist">{{ song.artist }}</text>
+          <text class="index-text">{{ String(index + 1).padStart(2, '0') }}</text>
+
+          <view class="song-cover">
+            <image
+              :src="song.cover || '/static/logo.jpg'"
+              class="cover-image"
+              mode="aspectFill"
+            />
+            <view class="visualizer" v-if="player.currentSong?.id === song.id && player.isPlaying">
+              <view class="bar bar-1"></view>
+              <view class="bar bar-2"></view>
+              <view class="bar bar-3"></view>
             </view>
           </view>
-          
-          <view class="song-actions">
-            <view class="action-btn" @tap.stop="toggleLike(song)">
-              <text class="action-icon" :class="{ liked: song.isLiked }">♥</text>
-            </view>
-            <view class="action-btn" @tap.stop="showMore(song)">
-              <text class="action-icon">⋯</text>
-            </view>
+
+          <view class="song-details">
+            <text class="song-title">{{ song.title }}</text>
+            <text class="song-artist">{{ song.artist }}</text>
           </view>
+
+          <text class="row-hint" v-if="player.currentSong?.id === song.id && player.isPlaying">正在播放</text>
         </view>
 
         <view class="loading-more" v-if="loading">
-          <text class="loading-text">加载中...</text>
+          <text class="loading-text">加载中…</text>
         </view>
 
         <view class="empty-state" v-if="currentSongs.length === 0 && !loading">
-          <text class="empty-icon">🎵</text>
-          <text class="empty-text">暂无歌曲</text>
+          <text class="empty-icon">♪</text>
+          <text class="empty-text">歌单空空的</text>
+          <text class="empty-hint">点右上角「添加音乐」导入一首吧</text>
         </view>
       </scroll-view>
     </view>
@@ -222,10 +211,6 @@ const loadSongs = async () => {
   }
 };
 
-const loadMore = () => {
-  console.log('加载更多');
-};
-
 const playSong = (song, index) => {
   player.setPlaylist(currentSongs.value, index);
   
@@ -236,17 +221,6 @@ const playSong = (song, index) => {
   });
   
   console.log('播放歌曲:', song);
-};
-
-
-
-const showMore = (song) => {
-  uni.showActionSheet({
-    itemList: ['添加到歌单', '分享', '删除'],
-    success: (res) => {
-      console.log('选择了:', res.tapIndex);
-    }
-  });
 };
 
 const goBack = () => {
@@ -631,4 +605,151 @@ onMounted(() => {
     font-size: 12px;
   }
 }
+
+/* 歌单随手机宽度收缩，长歌名不挤出操作按钮。 */
+.my-music-container {
+  width: 100%; max-width: 430px; margin: 0 auto; box-sizing: border-box;
+  min-height: calc(100vh - 44px); min-height: calc(100dvh - 44px);
+}
+.my-music-content {
+  width: 100%; max-width: 430px; margin: 0; box-sizing: border-box;
+  height: calc(100vh - 44px); height: calc(100dvh - 44px);
+  display: flex; flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.header, .tabs { flex-shrink: 0; }
+.song-list { flex: 1; min-height: 0; height: 0; width: 100%; }
+.song-item { padding: 12px 10px; }
+.song-index { width: 26px; flex-shrink: 0; }
+.song-info, .song-details { min-width: 0; }
+.song-cover { flex-shrink: 0; width: 44px; height: 44px; }
+.song-info { gap: 8px; }
+.song-actions { gap: 0; flex-shrink: 0; }
+.action-btn, .back-btn { min-width: 44px; min-height: 44px; }
+.tabs { flex-wrap: wrap; gap: 8px; }
+
+/* ===== 歌单页新视觉：与首页播放器统一（深青 + 薄荷） ===== */
+.my-music-container {
+  width: 100%; max-width: 430px; margin: 0 auto;
+  min-height: 100vh; min-height: 100dvh; box-sizing: border-box;
+  background:
+    radial-gradient(ellipse at 10% 0%, #3d74634d 0%, transparent 52%),
+    radial-gradient(ellipse at 100% 58%, #53737926 0%, transparent 55%),
+    linear-gradient(165deg, #23483e 0%, #152f2e 52%, #101f25 100%);
+  color: #f1f7f3; position: relative; overflow: hidden;
+}
+.bg-glow { position: absolute; border-radius: 50%; filter: blur(70px); pointer-events: none; }
+.glow-a { width: 240px; height: 240px; left: -80px; top: -70px; background: #4d8b7340; }
+.glow-b { width: 220px; height: 220px; right: -90px; bottom: -60px; background: #4a7d8c26; }
+
+.my-music-content {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 430px; margin: 0; box-sizing: border-box;
+  height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 18px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: transparent;
+}
+
+.header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 2px 0 18px; background: none; color: inherit;
+}
+.back-btn {
+  width: 40px; height: 40px; min-width: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid #e0fff017; border-radius: 14px;
+  background: #f0fff509; color: #d8e9e1;
+  cursor: pointer; transition: background .2s ease;
+}
+.back-btn:active { background: #b9e5cf18; }
+.header-title { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; gap: 2px; }
+.title { font-size: 22px; font-weight: 600; letter-spacing: .4px; color: #f1f7f3; }
+.subtitle { font-size: 11px; color: #9cb5ab; letter-spacing: .5px; }
+.header-right { width: 40px; flex-shrink: 0; }
+
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 12px; }
+.tab-item {
+  flex: 0 0 auto; padding: 8px 14px; position: static;
+  border: 1px solid #e0fff017; border-radius: 14px; background: #f0fff509;
+}
+.tab-item.active { background: #b9e5cf18; border-color: #b9e5cf55; }
+.tab-item.active::after { content: none; }
+.tab-text { font-size: 12px; font-weight: 500; color: #a2b9b0; }
+.tab-item.active .tab-text { color: #c4efd9; font-weight: 600; }
+
+.add-music-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border: 1px dashed #bee7d366; border-radius: 14px;
+  background: transparent; box-shadow: none; animation: none;
+  color: #bee7d3; cursor: pointer;
+}
+.add-music-btn:active { background: #b9e5cf14; transform: none; box-shadow: none; }
+.add-icon { color: #bee7d3; font-size: 14px; font-weight: 400; line-height: 1; }
+.add-text { color: #bee7d3; font-size: 12px; font-weight: 500; letter-spacing: .3px; }
+
+.song-list {
+  flex: 1; min-height: 0; height: 0; width: 100%;
+  background: transparent;
+}
+
+.song-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; margin-bottom: 8px;
+  background: #f0fff507; border: 1px solid #ffffff10; border-radius: 18px;
+  transition: background .2s ease, border-color .2s ease;
+}
+.song-item:active { background: #b9e5cf18; }
+.song-item.playing { background: #b9e5cf12; border-color: #b9e5cf44; }
+
+.index-text {
+  width: 22px; flex-shrink: 0; text-align: center;
+  font-size: 11px; font-weight: 500; color: #748f85;
+  font-variant-numeric: tabular-nums;
+}
+
+.song-cover {
+  position: relative; width: 48px; height: 48px; flex-shrink: 0;
+  border-radius: 13px; overflow: hidden;
+  background: #28433e; border: 1px solid #ffffff14;
+}
+.cover-image { width: 100%; height: 100%; display: block; }
+.visualizer {
+  position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center;
+  gap: 3px; padding-bottom: 10px; background: #0b1c1c99;
+}
+.bar { width: 3px; border-radius: 2px; background: #d8f6e6; animation: bar-bounce 1s ease-in-out infinite; }
+.bar-1 { height: 10px; animation-delay: -.3s; }
+.bar-2 { height: 16px; animation-delay: -.15s; }
+.bar-3 { height: 8px; }
+@keyframes bar-bounce {
+  0%, 100% { transform: scaleY(.5); }
+  50% { transform: scaleY(1.15); }
+}
+
+.song-details { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.song-title {
+  font-size: 14px; font-weight: 500; color: #f1f7f3;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.song-artist {
+  font-size: 11px; color: #9cb5ab;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row-hint { flex-shrink: 0; font-size: 10px; color: #b6efca; letter-spacing: .4px; }
+
+.loading-more { padding: 16px 0; text-align: center; }
+.loading-text { font-size: 12px; color: #9cb5ab; }
+
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 70px 20px; }
+.empty-icon { font-size: 32px; color: #8fb7a5; }
+.empty-text { font-size: 15px; color: #cfe2d8; }
+.empty-hint { font-size: 12px; color: #8fa79d; }
+
+@media (max-height: 640px) {
+  .header { padding-bottom: 10px; }
+  .toolbar { padding-bottom: 8px; }
+  .song-item { padding: 8px 10px; margin-bottom: 6px; }
+}
+
 </style>

@@ -69,6 +69,7 @@ export const usePlayerStore = defineStore('player', {
         this.audio.onError((err) => {
           console.error('Audio 错误:', err);
           this.isPlaying = false;
+          uni.showToast({ title: '音频加载失败，请重试或切换歌曲', icon: 'none' });
         });
 
         this.audio.onWaiting(() => {
@@ -103,7 +104,7 @@ export const usePlayerStore = defineStore('player', {
         });
 
         // 2. 监听音频元数据加载完成，获取音频总时长
-        this.audio.onLoadedMetadata(() => {
+        this.audio.onCanplay(() => {
           this.duration = this.audio.duration;
         });
         // ====================================================================
@@ -157,7 +158,8 @@ export const usePlayerStore = defineStore('player', {
     },
 
     play() {
-      if (!this.audio || !this.currentSong) return;
+      if (!this.currentSong) return;
+      if (!this.audio) this.initAudio();
 
       // 尝试从常见字段获取音源
       const src = this.currentSong.url || this.currentSong.src || this.currentSong.path || this.currentSong.audioUrl || this.currentSong.songUrl;
@@ -168,14 +170,14 @@ export const usePlayerStore = defineStore('player', {
       }
 
       console.log('尝试播放音源:', src, 'currentSong:', this.currentSong);
-      this.audio.src = src;
+      if (this.audio.src !== src) this.audio.src = src;
 
       try {
         // ==================== 修改5：恢复之前的播放位置 ====================
         // 问题：暂停后重新播放从头开始，而不是接着刚刚播放的那一段继续播放
         // 解决方案：在播放前恢复之前的播放位置
         if (this.currentTime > 0) {
-          this.audio.currentTime = this.currentTime;
+          this.audio.seek(this.currentTime);
         }
         // ====================================================================
 
@@ -186,8 +188,6 @@ export const usePlayerStore = defineStore('player', {
             console.error('audio.play() Promise 拒绝:', e);
             this.isPlaying = false;
           });
-        } else {
-          this.isPlaying = true;
         }
       } catch (err) {
         console.error('调用 audio.play() 失败:', err);
@@ -232,34 +232,14 @@ export const usePlayerStore = defineStore('player', {
     },
 
     setCurrentTime(time) {
-      // 检查音频对象和当前歌曲是否存在
-      if (!this.audio || !this.currentSong) return;
-      
-      // 保存当前的播放状态
-      const wasPlaying = this.isPlaying;
-      
-      // 直接使用currentTime属性设置播放位置（适用于H5环境）
-      this.audio.currentTime = time;
-      // 更新状态变量
-      this.currentTime = time;
-      if (this.duration > 0) {
-        this.progress = (time / this.duration) * 100;
-      }
-      
-      // 如果音频之前是处于播放状态的，那么在设置播放位置后继续播放
-      if (wasPlaying) {
-        // H5 下 play 返回 Promise，捕获异常以避免未捕获的 promise
-        const playRes = this.audio.play();
-        if (playRes && playRes.catch) {
-          playRes.catch((e) => {
-            console.error('audio.play() Promise 拒绝:', e);
-            this.isPlaying = false;
-          });
-        } else {
-          this.isPlaying = true;
-        }
-      }
+      if (!this.audio || !this.currentSong || !Number.isFinite(time) ||
+          !Number.isFinite(this.duration) || this.duration <= 0) return;
+      const target = Math.max(0, Math.min(time, this.duration));
+      this.audio.seek(target);
+      this.currentTime = target;
+      this.progress = target / this.duration * 100;
     }
+
   },
 
   getters: {

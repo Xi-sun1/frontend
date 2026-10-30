@@ -5,39 +5,52 @@
 <template>
   <view class="page">
 
-    <!-- 手势控制按钮 -->
-    <view class="gesture-btn" @click="handleCameraToggle">
-      <image 
-        src="/static/gesture-icon.png" 
-        style="width: 24px; height: 24px; margin-right: 8px;"
-        mode="aspectFit"
-      ></image>
-      {{ cameraVisible ? '关闭手势+情绪识别' : '开启手势+情绪识别' }}
+    <view class="player-header">
+      <button class="gesture-btn" :class="{ active: cameraVisible }"
+        :aria-label="cameraVisible ? '关闭手势与情绪识别' : '开启手势与情绪识别'"
+        :aria-pressed="cameraVisible" @click="handleCameraToggle">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M8 5L9.5 3H14.5L16 5H20V20H4V5H8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/>
+        </svg>
+        <text>{{ cameraVisible ? '识别中' : '情绪识别' }}</text>
+        <view class="recognition-dot" :class="{ active: cameraVisible }"></view>
+      </button>
+      <button class="library-btn" aria-label="打开我的音乐" @click="goToMyMusic">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 5H20M4 10H15M4 15H12M18 10V19" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          <circle cx="15.5" cy="19" r="2.5" stroke="currentColor" stroke-width="1.7"/>
+        </svg>
+        <text>歌单</text>
+      </button>
     </view>
 
     <view v-if="cameraVisible" class="camera-container">
       <view v-if="isH5" id="h5-video-host" class="camera-video-wrap"></view>
-      
+
       <camera v-if="!isH5" device-position="front" flash="off" class="camera-video"></camera>
 
-      <view class="camera-status">
-        <text v-if="cameraError" style="color: #ff6b6b">{{ cameraError }}</text>
-        <text v-else style="color: #fff">{{ cameraStatus }}</text>
-      </view>
-
-      <view v-if="emotionResults.length > 0" class="emotion-results">
-        <view class="emotion-title">情绪检测结果</view>
-        <view 
-          v-for="(result, index) in emotionResults" 
-          :key="index" 
-          class="emotion-result-item"
-        >
-          <view class="emotion-label">{{ result.emotion }}</view>
-          <view class="emotion-confidence">{{ (result.confidence * 100).toFixed(1) }}%</view>
+      <!-- 分区状态条：系统状态 / 错误 单独一行，手势与情绪状态分开显示，互不覆盖 -->
+      <view class="camera-status-bar">
+        <view v-if="cameraError" class="status-line error-line">
+          <text>{{ cameraError }}</text>
+        </view>
+        <view v-else-if="cameraStatus" class="status-line system-line">
+          <text>{{ cameraStatus }}</text>
+        </view>
+        <view class="status-row">
+          <view class="status-chip">
+            <text class="chip-tag">手势</text>
+            <text class="chip-text">{{ gestureStatus || '—' }}</text>
+          </view>
+          <view class="status-chip">
+            <text class="chip-tag">情绪</text>
+            <text class="chip-text">{{ emotionStatus || '—' }}</text>
+          </view>
         </view>
       </view>
 
-      <view class="close-camera" @click="closeCamera">关闭</view>
+      <view class="close-camera" @click="closeCamera">✕</view>
     </view>
 
     <view class="album-section">
@@ -51,19 +64,10 @@
       </view>
       
       <view v-if="showProgress" class="progress-section">
-        <view class="progress-bar">
-          <view class="progress-fill" :style="{ width: player.progress + '%' }"></view>
-          <view 
-            class="progress-slider" 
-            :style="{ left: player.progress + '%' }"
-            @touchstart="onSliderStart"
-            @touchmove="onSliderMove"
-            @touchend="onSliderEnd"
-            @mousedown="onSliderStart"
-            @mousemove="onSliderMove"
-            @mouseup="onSliderEnd"
-          ></view>
-        </view>
+        <slider class="seek-control" :value="isDragging ? seekPreview : player.progress"
+          :disabled="!player.duration" :min="0" :max="100" :step="0.1"
+          activeColor="#bee7d3" backgroundColor="#526c64" block-color="#e2f6eb"
+          :block-size="16" @changing="onSeekPreview" @change="onSeekCommit" />
         <view class="time-info">
           <text class="current-time">{{ formatTime(player.currentTime) }}</text>
           <text class="total-time">{{ formatTime(player.duration) }}</text>
@@ -73,7 +77,7 @@
 
     <view class="control-bar">
       <!-- 上一首按钮  -->
-      <button class="control-btn" @click="prevSong">
+      <button class="control-btn" aria-label="上一首" @click="prevSong">
         <view class="btn-icon">
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
             <path d="M8 6V26" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
@@ -82,24 +86,24 @@
         </view>
       </button>
       <!-- 播放/暂停按钮  -->
-      <button class="control-btn play-btn" @click="togglePlay">
+      <button class="control-btn play-btn" :aria-label="player.isPlaying ? '暂停' : '播放'" @click="togglePlay">
         <view class="btn-icon" v-if="player.isPlaying">
           <svg width="50" height="50" viewBox="0 0 50 50" fill="none">
-            <circle cx="25" cy="25" r="24" stroke="#fff" stroke-width="2"/>
-            <rect x="15" y="14" width="7" height="22" rx="1" fill="#fff"/>
-            <rect x="28" y="14" width="7" height="22" rx="1" fill="#fff"/>
+            
+            <rect x="16" y="14" width="6" height="22" rx="2" fill="#173d36"/>
+            <rect x="28" y="14" width="6" height="22" rx="2" fill="#173d36"/>
           </svg>
         </view>
 
         <view class="btn-icon" v-else>
           <svg width="50" height="50" viewBox="0 0 50 50" fill="none">
-            <circle cx="25" cy="25" r="24" stroke="#fff" stroke-width="2"/>
-            <path d="M18 10L38 25L18 40V10Z" fill="#fff"/>
+            
+            <path d="M19 13L36 25L19 37V13Z" fill="#173d36"/>
           </svg>
         </view>
       </button>
       <!-- 下一首按钮  -->
-      <button class="control-btn" @click="nextSong">
+      <button class="control-btn" aria-label="下一首" @click="nextSong">
         <view class="btn-icon">
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
             <path d="M6 26L26 16L6 6Z" fill="#fff"/>
@@ -107,18 +111,7 @@
           </svg>
         </view>
       </button>
-      <button class="control-btn my-btn" @click="goToMyMusic">
-        <view class="my-btn-content">
-          <view class="user-icon">
-            <!-- 用户图标 -->
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="6" r="4" stroke="#fff" stroke-width="1.5"/>
-              <path d="M3 16C3 12 10 10 10 10C10 10 17 12 17 16" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </view>
-          <text class="my-btn-text">我的</text>
-        </view>
-      </button>
+
     </view>
   </view>
 </template>
@@ -141,72 +134,57 @@ const cameraVisible = ref(false);
 const showProgress = ref(true);
 const cameraStatus = ref('');
 const cameraError = ref('');
+const gestureStatus = ref('');
+const emotionStatus = ref('');
 const emotionResults = ref([]);
 const currentEmotion = ref(null);
 const emotionStartTime = ref(null);
-const emotionConfidenceThreshold = 0.7;
+// 情绪推荐触发灵敏度（可按需调整）
+const emotionConfidenceThreshold = 0.6;   // 置信度阈值，低于此值不跟踪
+const emotionHoldDurationMs = 2000;       // 表情需持续保持的时长（毫秒）
 const isRecommending = ref(false);
 const pendingEmotion = ref(null);
+const pendingEmotionType = ref(null);
 const pendingEmotionConfidence = ref(null);
 
 const currentTime = computed(() => player.currentTime);
 const duration = computed(() => player.duration);
 const progress = computed(() => player.progress);
 
+// face-api.js 输出的 7 类表情
 const emotionLabels = {
   'happy': '😊 开心',
   'sad': '😢 悲伤',
+  'angry': '😠 生气',
+  'fearful': '😨 紧张',
+  'disgusted': '😖 厌恶',
+  'surprised': '😲 惊讶',
   'neutral': '😐 平静'
 };
 
-let isDragging = false;
-let dragStartX = 0;
-let dragStartTime = 0;
-
-const onSliderStart = (event) => {
-  isDragging = true;
-  event.preventDefault();
-  event.stopPropagation();
-  
-  const progressBar = document.querySelector('.progress-bar');
-  if (!progressBar) return;
-  
-  const touch = event.touches ? event.touches[0] : event;
-  const rect = progressBar.getBoundingClientRect();
-  dragStartX = touch.clientX - rect.left;
-  dragStartTime = player.currentTime;
+// 表情 → 推荐类型映射（后端支持 happy/excited/sad/calm）
+// happy/surprised → 欢快；sad → 舒缓忧郁；其余负性/平静表情 → 放松平复
+const emotionTypeMap = {
+  'happy': 'happy',
+  'surprised': 'happy',
+  'sad': 'sad',
+  'neutral': 'calm',
+  'angry': 'calm',
+  'fearful': 'calm',
+  'disgusted': 'calm'
 };
 
-const onSliderMove = (event) => {
-  if (!isDragging || !player.duration || !player.audio) return;
-  
-  event.preventDefault();
-  event.stopPropagation();
-  
-  const progressBar = document.querySelector('.progress-bar');
-  if (!progressBar) return;
-
-  const touch = event.touches ? event.touches[0] : event;
-  const rect = progressBar.getBoundingClientRect();
-  const currentX = touch.clientX - rect.left;
-  const clampedX = Math.max(0, Math.min(currentX, rect.width));
-  const ratio = clampedX / rect.width;
-  const newTime = ratio * player.duration;
-  
-  player.setCurrentTime(newTime);
+const isDragging = ref(false);
+const seekPreview = ref(0);
+const onSeekPreview = (event) => {
+  isDragging.value = true;
+  seekPreview.value = Number(event.detail.value);
 };
-
-const onSliderEnd = () => {
-  isDragging = false;
-  if (player.isPlaying && player.audio) {
-    player.audio.play();
-  }
+const onSeekCommit = (event) => {
+  const percent = Number(event.detail.value);
+  if (Number.isFinite(percent)) player.setCurrentTime(percent / 100 * player.duration);
+  isDragging.value = false;
 };
-
-window.addEventListener('touchend', onSliderEnd);
-window.addEventListener('mouseup', onSliderEnd);
-window.addEventListener('touchcancel', onSliderEnd);
-window.addEventListener('mouseleave', onSliderEnd);
 
 // 摄像头和画布相关变量
 let stream = null;
@@ -252,7 +230,7 @@ const loadScript = (src) => {
 const loadMediaPipe = async () => {
   if (window.Hands) return;
 
-  cameraStatus.value = '加载手势识别模型中...';
+  gestureStatus.value = '手势模型加载中…';
 
   try {
     await Promise.all([
@@ -260,9 +238,9 @@ const loadMediaPipe = async () => {
       loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js'),
       loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js')
     ]);
-    
+
     console.log('MediaPipe 加载完成');
-    cameraStatus.value = '手势识别模型加载完成';
+    gestureStatus.value = '手势模型就绪';
   } catch (error) {
     console.error('MediaPipe 加载失败:', error);
     cameraError.value = '手势识别模型加载失败';
@@ -272,8 +250,8 @@ const loadMediaPipe = async () => {
 // 加载face-api.js模型
 const loadFaceApiModels = async () => {
   try {
-    cameraStatus.value = '加载情绪识别模型中...';
-    
+    emotionStatus.value = '情绪模型加载中…';
+
     if (faceApiModelsLoaded) {
       console.log('✅ face-api.js模型已加载');
       return true;
@@ -285,19 +263,19 @@ const loadFaceApiModels = async () => {
     }
 
     const modelPath = 'https://justadudewhohacks.github.io/face-api.js/models';
-    
+
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(modelPath),
       faceapi.nets.faceLandmark68Net.loadFromUri(modelPath),
       faceapi.nets.faceRecognitionNet.loadFromUri(modelPath),
       faceapi.nets.faceExpressionNet.loadFromUri(modelPath)
     ]);
-    
+
     console.log('✅ 情绪识别模型加载完成');
     faceApiModelsLoaded = true;
-    cameraStatus.value = '情绪识别模型加载完成';
+    emotionStatus.value = '情绪模型就绪';
     return true;
-    
+
   } catch (error) {
     console.error('❌ face-api.js模型加载失败:', error);
     cameraError.value = '情绪识别模型加载失败';
@@ -385,9 +363,9 @@ const openCamera = async () => {
           video: {
             facingMode: 'user',
             // 使用更兼容的设置
-            width: { min: 320, ideal: 640, max: 1280 },
-            height: { min: 240, ideal: 480, max: 720 },
-            frameRate: { ideal: 24, max: 30 }
+            width: 320,
+           height: 240,
+            frameRate: { max: 15 }
           },
           audio: false
         });
@@ -534,20 +512,21 @@ const openCamera = async () => {
       // 同时加载手势识别 + 情绪识别
       console.log('7. 加载AI模型（手势 + 情绪）...');
       // 手势识别
-      cameraStatus.value = '正在加载手势识别模型...';
       await loadMediaPipe();
       initMediaPipe();
       startGestureProcessing();
-      cameraStatus.value = '手势识别已开启 🎯';
+      gestureStatus.value = '等待手势…';
 
       // 情绪识别
-      cameraStatus.value = '正在加载情绪识别模型...';
       const modelsLoaded = await loadFaceApiModels();
       if (modelsLoaded) {
         await startEmotionDetection();
-        cameraStatus.value = '手势 + 情绪识别已开启 🎯😊';
+        emotionStatus.value = '等待检测人脸…';
       }
-      
+
+      // 启动完成，清空系统提示，后续状态由手势/情绪分栏展示
+      cameraStatus.value = '';
+
       console.log('✅ 摄像头开启流程完成');
     }
   } catch (err) {
@@ -616,18 +595,18 @@ const initMediaPipe = () => {
           window.drawLandmarks(gestureCtx, lm, { color: '#FF0000', lineWidth: 1, radius: 3 });
         }
         
-        // 识别手势
-        const now = Date.now();
-        if (!gestureLock && now - lastGestureTime > 500) {
-          onHandResults(results);
-        }
+        // 每帧都调用onHandResults进行手势识别（显示状态），但动作触发仍然有锁保护
+        onHandResults(results);
         
         noHandFrames = 0;
-        cameraStatus.value = '检测到手部';
       } else {
         noHandFrames++;
-        cameraStatus.value = '未检测到手部';
-        
+
+        // 只有当之前显示的是手势状态时，才更新为未检测到状态，避免闪烁
+        if (gestureStatus.value !== '未检测到手，请举到画面中央') {
+          gestureStatus.value = '未检测到手，请举到画面中央';
+        }
+
         if (noHandFrames > 10) {
           if (hands.reset) hands.reset();
           noHandFrames = 0;
@@ -686,10 +665,11 @@ const stopGestureDetection = () => {
   processing = false;
   gestureLock = false;
   isPausedByFist = false;
-  
+
   if (gestureCanvas && gestureCtx) {
     gestureCtx.clearRect(0, 0, gestureCanvas.width, gestureCanvas.height);
   }
+  gestureStatus.value = '';
 };
 
 // 开始情绪识别
@@ -738,84 +718,80 @@ const startEmotionDetection = async () => {
       ).withFaceLandmarks().withFaceExpressions();
       
       const results = [];
-      
+
       if (detections.length > 0) {
         detections.forEach((detection, index) => {
           const { detection: face, expressions } = detection;
-          
+
           const sortedExpressions = Object.entries(expressions)
             .sort((a, b) => b[1] - a[1]);
-          
+
           const primaryEmotion = sortedExpressions[0][0];
           const confidence = sortedExpressions[0][1];
-          
+
           const emotionKey = Object.keys(emotionLabels).includes(primaryEmotion) ? primaryEmotion : 'neutral';
           results.push({
             id: index,
+            key: emotionKey,
             emotion: emotionLabels[emotionKey],
+            type: emotionTypeMap[emotionKey] || 'calm',
             confidence: confidence,
             expressions: expressions
           });
-          
+
           drawFaceBox(face.box, emotionKey, confidence);
-          
+
           drawEmotionLabel(face.box, emotionKey, confidence);
-          
+
           if (detection.landmarks) {
             drawFaceLandmarks(detection.landmarks);
           }
         });
-        
+
         emotionResults.value = results;
-        cameraStatus.value = `检测到 ${results.length} 个人脸`;
-        
+
         if (results.length > 0) {
-          const primaryEmotion = results[0].emotion;
-          const confidence = results[0].confidence;
-          
-          console.log('原始情绪标签:', primaryEmotion);
-          console.log('情绪置信度:', confidence);
-          console.log('是否正在进行推荐:', isRecommending.value);
-          console.log('当前播放状态:', player.isPlaying);
-          
+          const primary = results[0];
+          const pct = `${(primary.confidence * 100).toFixed(0)}%`;
+
+          // 情绪状态：显示表情、置信度，跟踪中时显示保持进度
+          if (currentEmotion.value === primary.key && emotionStartTime.value) {
+            const holdSec = ((Date.now() - emotionStartTime.value) / 1000).toFixed(1);
+            emotionStatus.value = `${primary.emotion} ${pct} · 保持${holdSec}s`;
+          } else {
+            emotionStatus.value = `${primary.emotion} ${pct}`;
+          }
+
           if (isRecommending.value) {
             console.log('正在进行推荐，跳过此次检测');
             return;
           }
-          
-          if (confidence >= emotionConfidenceThreshold) {
-            if (primaryEmotion === currentEmotion.value) {
-              const duration = Date.now() - emotionStartTime.value;
-              console.log('表情持续时间:', duration / 1000, '秒');
-              
-              if (duration >= 3000) {
-                console.log('表情持续时间达到3秒，进行音乐推荐');
-                
+
+          if (primary.confidence >= emotionConfidenceThreshold) {
+            if (primary.key === currentEmotion.value) {
+              const holdDuration = Date.now() - emotionStartTime.value;
+              console.log('表情持续时间:', holdDuration / 1000, '秒');
+
+              if (holdDuration >= emotionHoldDurationMs) {
+                console.log(`表情持续时间达到${emotionHoldDurationMs / 1000}秒，进行音乐推荐`);
+
                 if (player.isPlaying) {
                   console.log('歌曲正在播放，将表情标记为待推荐');
-                  pendingEmotion.value = primaryEmotion;
-                  pendingEmotionConfidence.value = confidence;
-                  console.log('待推荐表情:', pendingEmotion.value);
+                  pendingEmotion.value = primary.key;
+                  pendingEmotionType.value = primary.type;
+                  pendingEmotionConfidence.value = primary.confidence;
+                  console.log('待推荐表情:', pendingEmotion.value, '→', pendingEmotionType.value);
                   currentEmotion.value = null;
                   emotionStartTime.value = null;
                 } else {
                   console.log('歌曲没有在播放，直接进行推荐');
                   isRecommending.value = true;
-                  
-                  let emotionType = 'calm';
-                  if (primaryEmotion.includes('开心') || primaryEmotion.includes('happy')) {
-                    emotionType = 'happy';
-                    console.log('检测到开心情绪，映射为:', emotionType);
-                  } else if (primaryEmotion.includes('悲伤') || primaryEmotion.includes('sad')) {
-                    emotionType = 'sad';
-                    console.log('检测到悲伤情绪，映射为:', emotionType);
-                  } else {
-                    emotionType = 'calm';
-                    console.log('检测到平静或其他情绪，映射为:', emotionType);
-                  }
-                  
+
+                  const emotionType = primary.type;
+                  const confidence = primary.confidence;
+
                   console.log('情绪检测结果:', {
-                    primaryEmotion,
+                    primaryEmotion: primary.key,
                     confidence,
                     mappedEmotionType: emotionType
                   });
@@ -864,9 +840,8 @@ const startEmotionDetection = async () => {
                                     // 检查是否有待推荐的表情
                                     if (pendingEmotion.value) {
                                       console.log('有等待推荐的表情，进行推荐');
-                                      const emotionType = pendingEmotion.value.includes('开心') || pendingEmotion.value.includes('happy') ? 'happy' : 
-                                                     pendingEmotion.value.includes('悲伤') || pendingEmotion.value.includes('sad') ? 'sad' : 'calm';
-                                      
+                                      const emotionType = pendingEmotionType.value || 'calm';
+
                                       // 发送待推荐的表情到后端
                                       emotionApi.recommendByEmotion(emotionType, pendingEmotionConfidence.value)
                                         .then((response) => {
@@ -874,25 +849,27 @@ const startEmotionDetection = async () => {
                                           if (response.code === 200 && response.data && response.data.recommendedSongs) {
                                             const recommendedSongs = response.data.recommendedSongs;
                                             console.log('推荐的音乐:', recommendedSongs);
-                                            
+
                                             if (recommendedSongs.length > 0) {
                                               const randomIndex = Math.floor(Math.random() * recommendedSongs.length);
                                               const selectedSong = recommendedSongs[randomIndex];
                                               console.log('随机选择的音乐:', selectedSong);
-                                              
+
                                               playerStore.setPlaylist(recommendedSongs, randomIndex);
                                               console.log('已更新播放列表并开始播放推荐音乐');
                                             }
                                           }
-                                          
+
                                           // 重置待推荐表情
                                           pendingEmotion.value = null;
+                                          pendingEmotionType.value = null;
                                           pendingEmotionConfidence.value = null;
                                         })
                                         .catch((error) => {
                                           console.error('待推荐表情推荐失败:', error);
                                           // 重置待推荐表情
                                           pendingEmotion.value = null;
+                                          pendingEmotionType.value = null;
                                           pendingEmotionConfidence.value = null;
                                         });
                                     }
@@ -926,28 +903,14 @@ const startEmotionDetection = async () => {
                             if (response.code === 200 && response.data && response.data.list && response.data.list.length > 0) {
                               const allSongs = response.data.list;
                               let filteredSongs = [];
-                              
-                              // 根据情绪类型过滤歌曲
-                              if (primaryEmotion.includes('开心') || primaryEmotion.includes('happy')) {
-                                // 开心：过滤出happy或excited类型的歌曲
-                                filteredSongs = allSongs.filter(song => 
-                                  song.title.includes('happy') || song.title.includes('excited')
-                                );
-                                console.log('过滤出的开心类型歌曲:', filteredSongs);
-                              } else if (primaryEmotion.includes('悲伤') || primaryEmotion.includes('sad')) {
-                                // 悲伤：过滤出sad类型的歌曲
-                                filteredSongs = allSongs.filter(song => 
-                                  song.title.includes('sad')
-                                );
-                                console.log('过滤出的悲伤类型歌曲:', filteredSongs);
-                              } else {
-                                // 平静或其他情绪：过滤出calm类型的歌曲
-                                filteredSongs = allSongs.filter(song => 
-                                  song.title.includes('calm')
-                                );
-                                console.log('过滤出的平静类型歌曲:', filteredSongs);
-                              }
-                              
+
+                              // 按歌曲 mood_type 情绪类型过滤（happy/excited 归为欢快）
+                              const matchTypes = emotionType === 'happy' ? ['happy', 'excited'] : [emotionType];
+                              filteredSongs = allSongs.filter(song =>
+                                matchTypes.includes(song.mood_type)
+                              );
+                              console.log(`按情绪类型 ${matchTypes.join('/')} 过滤出 ${filteredSongs.length} 首`);
+
                               // 如果过滤后没有歌曲，使用所有歌曲
                               if (filteredSongs.length === 0) {
                                 filteredSongs = allSongs;
@@ -979,32 +942,28 @@ const startEmotionDetection = async () => {
                                       // 检查是否有待推荐的表情
                                       if (pendingEmotion.value) {
                                         console.log('有等待推荐的表情，进行推荐');
-                                        // 直接从曲库中过滤相应类型的歌曲
-                                        const emotionType = pendingEmotion.value.includes('开心') || pendingEmotion.value.includes('happy') ? 'happy' : 
-                                                         pendingEmotion.value.includes('悲伤') || pendingEmotion.value.includes('sad') ? 'sad' : 'calm';
-                                        
-                                        let filteredSongs = [];
-                                        if (emotionType === 'happy') {
-                                          filteredSongs = allSongs.filter(song => song.title.includes('happy') || song.title.includes('excited'));
-                                        } else if (emotionType === 'sad') {
-                                          filteredSongs = allSongs.filter(song => song.title.includes('sad'));
-                                        } else {
-                                          filteredSongs = allSongs.filter(song => song.title.includes('calm'));
-                                        }
-                                        
+                                        // 直接从曲库中按 mood_type 过滤相应类型的歌曲
+                                        const pendingType = pendingEmotionType.value || 'calm';
+                                        const matchTypes = pendingType === 'happy' ? ['happy', 'excited'] : [pendingType];
+
+                                        let filteredSongs = allSongs.filter(song =>
+                                          matchTypes.includes(song.mood_type)
+                                        );
+
                                         if (filteredSongs.length === 0) {
                                           filteredSongs = allSongs;
                                         }
-                                        
+
                                         const randomIndex = Math.floor(Math.random() * filteredSongs.length);
                                         const selectedSong = filteredSongs[randomIndex];
                                         console.log('随机选择的音乐:', selectedSong);
-                                        
+
                                         playerStore.setPlaylist(filteredSongs, randomIndex);
                                         console.log('已更新播放列表并开始播放推荐音乐');
-                                        
+
                                         // 重置待推荐表情
                                         pendingEmotion.value = null;
+                                        pendingEmotionType.value = null;
                                         pendingEmotionConfidence.value = null;
                                       }
                                     });
@@ -1040,7 +999,7 @@ const startEmotionDetection = async () => {
             } else {
               // 表情变化，更新当前跟踪的表情和开始时间
               console.log('表情变化，更新跟踪信息');
-              currentEmotion.value = primaryEmotion;
+              currentEmotion.value = primary.key;
               emotionStartTime.value = Date.now();
             }
           } else {
@@ -1092,7 +1051,7 @@ const startEmotionDetection = async () => {
         }
       } else {
         emotionResults.value = [];
-        cameraStatus.value = '未检测到人脸';
+        emotionStatus.value = '未检测到人脸，请正对摄像头';
       }
       
     } catch (error) {
@@ -1127,6 +1086,7 @@ const stopEmotionDetection = () => {
     emotionCanvas.style.display = 'none';
   }
   emotionResults.value = [];
+  emotionStatus.value = '';
 };
 
 // 绘制人脸框
@@ -1191,15 +1151,22 @@ const drawFaceLandmarks = (landmarks) => {
   });
 };
 
-// 手势识别结果处理（保持原有逻辑）
+// 手势识别结果处理
+// 添加防抖机制：只有当手势真正变化时才更新显示状态，避免闪烁
 const onHandResults = (results) => {
   if (!results.multiHandLandmarks.length) {
-    cameraStatus.value = '未检测到手';
+    // 只有当之前不是未检测到状态时才更新
+    if (gestureStatus.value !== '未检测到手，请举到画面中央') {
+      gestureStatus.value = '未检测到手，请举到画面中央';
+    }
     return;
   }
 
   const lm = results.multiHandLandmarks[0];
   const now = Date.now();
+  
+  // 当前帧计算的手势状态
+  let currentGesture = '';
 
   // 传统的手指向上判断函数
   const fingerUp = (tip, pip) => lm[tip].y < lm[pip].y;
@@ -1236,19 +1203,19 @@ const onHandResults = (results) => {
   const middleExtension = calculateFingerExtension(12, 11, 10, 9);
   const ringExtension = calculateFingerExtension(16, 15, 14, 13);
   const pinkyExtension = calculateFingerExtension(20, 19, 18, 17);
-  
-  // 阈值微调：进一步放宽，提升识别灵敏度
-  const EXTENSION_THRESHOLD = 0.8;  // 手指较直即可认为伸直
-  const CURL_THRESHOLD = 0.85;      // 手指明显弯曲即可认为握拳
-  
-  const isIndexExtended = indexExtension > EXTENSION_THRESHOLD;
-  const isMiddleExtended = middleExtension > EXTENSION_THRESHOLD;
-  const isRingExtended = ringExtension > EXTENSION_THRESHOLD;
-  const isPinkyExtended = pinkyExtension > EXTENSION_THRESHOLD;
-  const isIndexCurled = indexExtension < CURL_THRESHOLD;
-  const isMiddleCurled = middleExtension < CURL_THRESHOLD;
-  const isRingCurled = ringExtension < CURL_THRESHOLD;
-  const isPinkyCurled = pinkyExtension < CURL_THRESHOLD;
+
+  // 单一阈值二分类：伸直率 >= 阈值即为伸直，否则视为弯曲
+  // 旧版伸直 0.8 / 弯曲 0.85 之间存在死区（0.8~0.85 的手指两头都不算），导致手势漏判
+  const EXTENSION_THRESHOLD = 0.8;
+
+  const isIndexExtended = indexExtension >= EXTENSION_THRESHOLD;
+  const isMiddleExtended = middleExtension >= EXTENSION_THRESHOLD;
+  const isRingExtended = ringExtension >= EXTENSION_THRESHOLD;
+  const isPinkyExtended = pinkyExtension >= EXTENSION_THRESHOLD;
+  const isIndexCurled = !isIndexExtended;
+  const isMiddleCurled = !isMiddleExtended;
+  const isRingCurled = !isRingExtended;
+  const isPinkyCurled = !isPinkyExtended;
   
   const isIndexUp = lm[8].y < lm[5].y - 0.015;
   const isIndexDown = lm[8].y > lm[5].y + 0.015;
@@ -1268,58 +1235,78 @@ const onHandResults = (results) => {
     isPinkyCurled,
   ].filter(Boolean).length;
   
-  // 手势判断逻辑
+  // 手势判断逻辑 - 先计算当前手势，然后只在手势变化时更新显示，避免闪烁
+  // 动作触发统一冷却：GESTURE_COOLDOWN_MS，由 triggerGestureAction 统一上锁
   // 1) 食指向上：上一首（保证其它三指大多未伸直即可）
   if (isIndexExtended && extendedCount === 1 && isIndexUp) {
-    cameraStatus.value = '👆 食指向上 - 上一首';
-    triggerGestureAction(() => player.prev());
+    currentGesture = '👆 食指向上 - 上一首';
+    if (!gestureLock) {
+      triggerGestureAction(() => player.prev());
+    }
   }
   // 2) 食指向下：下一首
   else if (isIndexExtended && extendedCount === 1 && isIndexDown) {
-    cameraStatus.value = '👇 食指向下 - 下一首';
-    triggerGestureAction(() => player.next());
+    currentGesture = '👇 食指向下 - 下一首';
+    if (!gestureLock) {
+      triggerGestureAction(() => player.next());
+    }
   }
   // 3) 握拳：多数手指弯曲，且几乎没有伸直手指
-  //    如果当前正在播放，则暂停，并进入「由握拳暂停」状态
   else if (curledCount >= 3 && extendedCount <= 1) {
-    if (!gestureLock && player.isPlaying && !isPausedByFist) {
-      cameraStatus.value = '✊ 握拳：已暂停播放';
-      gestureLock = true;
-      lastGestureTime = Date.now();
-      player.pause();
-      isPausedByFist = true;
-      setTimeout(() => {
-        gestureLock = false;
-      }, 500);
+    // 根据播放状态确定显示文本
+    if (player.isPlaying && !isPausedByFist) {
+      currentGesture = '✊ 握拳：暂停播放';
+      if (!gestureLock) {
+        triggerGestureAction(() => {
+          player.pause();
+          isPausedByFist = true;
+        });
+      }
+    } else if (isPausedByFist && !player.isPlaying) {
+      currentGesture = '✊ 握拳（已暂停）';
+    } else {
+      currentGesture = '✊ 握拳';
     }
   }
-  // 4) 张开手掌：多数手指伸直，如果是由握拳暂停的，则继续播放
+  // 4) 张开手掌：多数手指伸直
   else if (extendedCount >= 3) {
-    if (!gestureLock && isPausedByFist && !player.isPlaying) {
-      cameraStatus.value = '✋ 手掌打开：继续播放';
-      gestureLock = true;
-      lastGestureTime = Date.now();
-      player.play();
-      isPausedByFist = false;
-      setTimeout(() => {
-        gestureLock = false;
-      }, 500);
+    // 根据播放状态确定显示文本
+    if (isPausedByFist && !player.isPlaying) {
+      currentGesture = '✋ 手掌打开：继续播放';
+      if (!gestureLock) {
+        triggerGestureAction(() => {
+          player.play();
+          isPausedByFist = false;
+        });
+      }
+    } else {
+      currentGesture = '✋ 手掌打开';
     }
+  }
+  // 5) 未识别的手势
+  else {
+    currentGesture = '🤚 未识别手势，请尝试食指/握拳/手掌';
+  }
+
+  // 只有当手势真正变化时才更新显示，避免闪烁
+  if (currentGesture !== gestureStatus.value) {
+    gestureStatus.value = currentGesture;
   }
 };
 
-// 触发手势动作（带防抖）
+// 触发手势动作（统一防抖：上锁后 GESTURE_COOLDOWN_MS 内忽略新手势）
+const GESTURE_COOLDOWN_MS = 800;
 const triggerGestureAction = (action) => {
   gestureLock = true;
   lastGestureTime = Date.now();
-  
+
   // 执行动作
   action();
-  
-  // 500ms后解锁
+
+  // 冷却结束后解锁
   setTimeout(() => {
     gestureLock = false;
-  }, 1000);
+  }, GESTURE_COOLDOWN_MS);
 };
 
 // 关闭摄像头
@@ -1348,8 +1335,10 @@ const closeCamera = () => {
   cameraVisible.value = false;
   showProgress.value = true;
   cameraStatus.value = '';
+  gestureStatus.value = '';
+  emotionStatus.value = '';
   emotionResults.value = [];
-  
+
   console.log('摄像头已关闭');
 };
 
@@ -1479,8 +1468,6 @@ const formatTime = (s) => {
 const goToMyMusic = () => uni.navigateTo({ url: '/pages/myMusic/myMusic' });
 onUnmounted(() => {
   closeCamera();
-  window.removeEventListener('touchend', onSliderEnd);
-  window.removeEventListener('mouseup', onSliderEnd);
 });
 </script>
 
@@ -1491,7 +1478,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
-  background: url('/static/background.jpg') center/cover no-repeat;
+  background: #122d2a;
   padding: 20px;
   box-sizing: border-box;
   position: relative;
@@ -1537,136 +1524,103 @@ onUnmounted(() => {
   border: 2px solid rgba(255, 255, 255, 0.1);
 }
 
-.camera-status {
+/* 分区状态条：系统提示 + 手势/情绪分栏，互不覆盖 */
+.camera-status-bar {
   position: absolute;
-  top: 15px;
-  left: 15px;
-  right: 15px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 10px 15px;
-  border-radius: 15px;
-  font-size: 13px;
-  text-align: center;
+  top: 10px;
+  left: 10px;
+  right: 10px;
   z-index: 1001;
-  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.status-line {
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  text-align: center;
+  backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   font-weight: 500;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-.emotion-results {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  background: rgba(0, 0, 0, 0.85);
-  border-radius: 15px;
-  padding: 12px;
-  max-width: 220px;
-  max-height: 180px;
-  overflow-y: auto;
-  z-index: 1002;
-  backdrop-filter: blur(15px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  transform: scaleX(-1);
+.status-line.error-line {
+  color: #ffb4b4;
+  border-color: rgba(255, 107, 107, 0.4);
+  background: rgba(60, 10, 10, 0.7);
 }
 
-.emotion-results::-webkit-scrollbar {
-  width: 6px;
-}
-
-.emotion-results::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
-}
-
-.emotion-results::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-}
-
-.emotion-results::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.emotion-title {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 10px;
-  text-align: center;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-  transform: scaleX(-1);
-  display: inline-block;
-  width: 100%;
-}
-
-.emotion-result-item {
+.status-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  transition: all 0.2s ease;
-  transform: scaleX(-1);
-}
-
-.emotion-result-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  padding-left: 5px;
-  padding-right: 5px;
-  border-radius: 8px;
-}
-
-.emotion-result-item:last-child {
-  border-bottom: none;
-}
-
-.emotion-label {
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
   gap: 6px;
 }
 
-.emotion-confidence {
-  color: #4CAF50;
-  font-size: 11px;
-  font-weight: 600;
-  background: rgba(76, 175, 80, 0.15);
-  padding: 3px 8px;
-  border-radius: 12px;
-  min-width: 45px;
-  text-align: center;
-  border: 1px solid rgba(76, 175, 80, 0.3);
+.status-chip {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(224, 255, 240, 0.18);
+  border-radius: 10px;
+  padding: 5px 8px;
+  backdrop-filter: blur(8px);
 }
 
-/* 关闭按钮样式 */
+.chip-tag {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: #173d36;
+  background: #9fe8c8;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.chip-text {
+  font-size: 11px;
+  color: #eafff5;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 关闭按钮样式：紧凑圆形，贴合摄像头画面右下角 */
 .close-camera {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
-  color: #fff;
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  padding: 7px 14px;
-  border-radius: 15px;
-  font-size: 13px;
+  bottom: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(16, 31, 37, 0.65);
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
   cursor: pointer;
   z-index: 1003;
-  transition: all 0.3s ease;
-  font-weight: 500;
-  border: none;
-  box-shadow: 0 4px 15px rgba(245, 87, 108, 0.3);
+  transition: all 0.25s ease;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .close-camera:hover {
-  background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
-  transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(245, 87, 108, 0.4);
+  color: #fff;
+  background: rgba(245, 87, 108, 0.85);
+  border-color: rgba(245, 87, 108, 0.5);
+  transform: scale(1.08);
+  box-shadow: 0 4px 14px rgba(245, 87, 108, 0.35);
 }
 
 /* 播放器核心 UI 样式 */
@@ -1947,12 +1901,7 @@ onUnmounted(() => {
     padding: 10px 15px;
     min-width: 80px;
   }
-  
-  .emotion-results {
-    max-width: 180px;
-    max-height: 160px;
-  }
-  
+
   .mode-switcher {
     gap: 8px;
     padding: 6px;
@@ -1982,29 +1931,10 @@ onUnmounted(() => {
   .control-bar {
     padding: 15px 0;
   }
-  
+
   .play-btn {
     width: 55px;
     height: 55px;
-  }
-  
-  .emotion-results {
-    max-width: 160px;
-    max-height: 140px;
-    padding: 10px;
-  }
-  
-  .emotion-title {
-    font-size: 12px;
-  }
-  
-  .emotion-label {
-    font-size: 11px;
-  }
-  
-  .emotion-confidence {
-    font-size: 10px;
-    padding: 2px 6px;
   }
 }
 
@@ -2081,4 +2011,130 @@ onUnmounted(() => {
 #h5-raw-video {
   filter: contrast(1.05) brightness(1.02);
 }
+
+/* 手机竖屏布局 */
+.page {
+  width: 100%; max-width: 430px; margin: 0 auto;
+  min-height: calc(100vh - 44px);
+  min-height: calc(100dvh - 44px);
+  padding: 18px 22px calc(18px + env(safe-area-inset-bottom, 0px));
+  gap: 20px;
+}
+.gesture-btn {
+  position: relative; top: auto; left: auto; align-self: flex-start;
+  box-sizing: border-box; max-width: 100%; min-height: 44px;
+  padding: 10px 14px; font-size: 13px;
+}
+.album-section { margin-top: 0; gap: 24px; min-width: 0; }
+.album-cover {
+  box-sizing: border-box; width: min(76%, 280px); height: auto;
+  aspect-ratio: 1; flex-shrink: 0; margin-bottom: 0;
+}
+.song-info { width: 100%; max-width: 100%; margin-bottom: 0; }
+.song-title { font-size: 22px; overflow-wrap: anywhere; }
+.song-artist { font-size: 14px; overflow-wrap: anywhere; }
+.progress-section { width: 100%; margin-top: 0; padding: 12px 0; }
+.progress-slider::before { content: ''; position: absolute; inset: -14px; }
+.progress-slider { touch-action: none; }
+.control-bar {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px; padding: 12px 0; margin-bottom: 0; flex-shrink: 0;
+}
+.control-btn { margin: 0 auto; min-width: 44px; min-height: 44px; padding: 8px; }
+.play-btn { width: 64px; height: 64px; }
+.my-btn { min-width: 44px; padding: 8px; }
+.camera-container {
+  /* 固定悬浮层：不参与页面排版，避免打开摄像头把页面撑长 */
+  position: fixed; top: 76px; left: 50%; transform: translateX(-50%);
+  width: min(92vw, 60vh, 430px); height: auto; aspect-ratio: 4 / 3;
+  box-sizing: border-box; flex-shrink: 0; z-index: 1000;
+}
+.camera-video-wrap, .camera-video { position: absolute; inset: 0; width: 100%; height: 100%; }
+.camera-status-bar { top: 8px; left: 8px; right: 8px; gap: 4px; }
+.status-chip { padding: 4px 6px; }
+.chip-text { font-size: 10px; }
+.global-status { width: calc(100% - 40px); max-width: 370px; box-sizing: border-box; }
+@media (max-height: 700px) {
+  .page { gap: 12px; }
+  .album-section { gap: 16px; }
+  .album-cover { width: min(60%, 220px); }
+}
+
+
+/* 简洁播放器：深青背景、薄荷色主控件、三个居中播放按钮 */
+.page {
+  background:
+    radial-gradient(ellipse at 12% 5%, #3d74634d 0%, transparent 52%),
+    radial-gradient(ellipse at 100% 52%, #53737926 0%, transparent 55%),
+    linear-gradient(165deg, #23483e 0%, #152f2e 52%, #101f25 100%);
+  padding: 22px 28px calc(30px + env(safe-area-inset-bottom, 0px));
+  gap: 24px;
+}
+.player-header { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px; }
+.gesture-btn, .library-btn {
+  position: relative; margin: 0; min-height: 44px; padding: 10px 12px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1px solid #e0fff017; border-radius: 16px;
+  background: #f0fff509; color: #d8e9e1;
+  font-size: 12px; line-height: 1.4; font-weight: 500;
+  box-shadow: none; box-sizing: border-box;
+}
+.gesture-btn::after, .library-btn::after, .control-btn::after { content: none; border: none; }
+.gesture-btn.active { background: #b9e5cf18; border-color: #b9e5cf55; color: #c4efd9; }
+.recognition-dot { width: 5px; height: 5px; border-radius: 50%; background: #748f85; }
+.recognition-dot.active { background: #b6efca; box-shadow: 0 0 8px #b6efca66; }
+.album-section { justify-content: center; gap: 28px; padding-top: 24px; }
+.album-cover {
+  width: 100%; max-width: 300px; height: auto; aspect-ratio: 1;
+  border-radius: 28px; border: 1px solid #ffffff22;
+  box-shadow: 0 25px 50px #00000038, 0 0 50px #a0e2c608;
+  background: #28433e; margin: 0;
+}
+.album-cover:hover { transform: none; box-shadow: 0 25px 50px #00000038; }
+.cover-image:hover { transform: none; }
+.song-info { margin: 0; width: 100%; text-align: left; }
+.song-title {
+  font-size: 24px; font-weight: 600; line-height: 1.45;
+  letter-spacing: .3px; color: #f1f7f3; text-shadow: none; margin-bottom: 7px;
+}
+.song-artist { font-size: 13px; line-height: 1.6; color: #a2b9b0; }
+.progress-section { padding: 12px 0 0; }
+.progress-bar { height: 4px; background: #d8e9e126; border-radius: 8px; }
+.progress-fill { background: #bee7d3; border-radius: 8px; }
+.progress-slider { width: 12px; height: 12px; background: #e2f6eb; box-shadow: 0 0 0 4px #bee7d310; }
+.time-info { margin-top: 13px; color: #9cb5ab; font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
+.control-bar {
+  grid-template-columns: 1fr 84px 1fr; max-width: 300px;
+  margin: 0 auto; padding: 8px 0 16px; gap: 20px;
+}
+.control-btn {
+  width: 54px; height: 54px; min-width: 44px; padding: 0;
+  border-radius: 50%; background: transparent;
+}
+.control-btn:hover { background: #ffffff08; transform: none; }
+.control-btn:active { transform: scale(.94); }
+.play-btn {
+  width: 80px; height: 80px; background: #c8ead7;
+  box-shadow: 0 8px 26px #00000020, 0 0 0 8px #c8ead707;
+}
+.play-btn:hover { background: #d9f2e3; transform: none; }
+.play-btn:active { transform: scale(.96); }
+.camera-container { border-radius: 22px; border-color: #c8ead72b; box-shadow: 0 14px 28px #00000026; }
+@media (max-height: 700px) {
+  .page { gap: 16px; padding-top: 16px; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .album-section { padding-top: 8px; gap: 20px; }
+  .album-cover { width: 72%; max-width: 230px; }
+  .control-bar { padding-bottom: 4px; }
+  .play-btn { width: 72px; height: 72px; }
+}
+@media (max-width: 350px) {
+  .page { padding-left: 22px; padding-right: 22px; }
+  .song-title { font-size: 21px; }
+  .control-bar { gap: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .control-btn, .album-cover { transition: none; }
+}
+
+.seek-control { margin: 0; padding: 8px 0; }
 </style>
